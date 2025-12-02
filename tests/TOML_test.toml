@@ -6,7 +6,7 @@ Server1 = "https://ferriit.gregtech.eu/shippkg"
 [Package.gcc]
 Version = "v15.2"
 Server = "Server1"
-Description = "Gnu Compiler Collection"
+Description = "Gnu Compiler Collection" # other comment
 
 [Package.linux]
 Version = "6.17.8"
