@@ -1,0 +1,14 @@
+[Servers]
+Server1 = "https://ferriit.gregtech.eu/shippkg"
+
+# inline comment
+
+[Package.gcc]
+Version = "v15.2"
+Server = "Server1"
+Description = "Gnu Compiler Collection"
+
+[Package.linux]
+Version = "6.17.8"
+Server = "Server1"
+Description = "Lightweight kernel"
