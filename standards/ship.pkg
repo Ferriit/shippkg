@@ -1,0 +1,26 @@
+[Servers]
+# DO NOT change the names of servers already in use
+Server1 = "https://ferriit.gregtech.eu/shippkg"
+
+# Customization for text stuff and colors
+
+[Customize.text]
+LoggingEnd = ""         # The symbols added at the end of logging messages. Padded by default
+ErrorPrefix = "E"       # The prefix shown for errors
+WarningPrefix = "W"     # The prefix shown for warnings
+InfoPrefix = "I"        # The prefix shown for regular information
+InputPrefix = "?"       # The prefix shown for user input
+
+[Customize.colors]
+# Colors for the previously mentioned elements in Customize.text
+LoggingEndColor = ""
+ErrorPrefixColor = "red"
+WarningPrefixColor = "yellow"
+InfoPrefixColor = "blue"
+InputPrefixColor = "white"
+
+# Add packages with '[Package.'package name']'. The label needs to have version and a server to fetch from. Example for GCC:
+
+# [Package.gcc]
+# Version = "v15.2"
+# Server = "Server1"
