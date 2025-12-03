@@ -272,6 +272,7 @@ fun add(pkg: String, shipPKGFile: File, shipPKG: MutableMap<String, MutableMap<S
         log(LogType.ERR, "Package '$pkg' not found on any available server.")
         return
     }
+    log(LogType.INFO, "Adding package '$pkg' version '$Version' from server '$Match'...")
     shipPKGFile.appendText("\n" + writeTOML(mapOf("Package.$pkg" to mapOf("Version" to Version, "Server" to Match))))
 }
 
