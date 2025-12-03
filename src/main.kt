@@ -6,7 +6,8 @@ import java.nio.file.Paths
 
 const val ROOT_PATH = "/etc/ship/"
 const val SHIP_FILE = "/etc/ship/ship.pkg"
-const val PACKAGE_LIST_PATH = "/etc/ship/packages/"
+const val PACKAGE_LIST_PATH = "/etc/ship/packagelists/"
+const val DOWNLOAD_PATH = "/etc/ship/downloads/"
 
 // Customizable things done by fetching from the ship.pkg file
 var messageEnd = ""
@@ -250,7 +251,7 @@ fun update(shipPKG: MutableMap<String, MutableMap<String, String>>) {
     }
 
     for ((name, url) in availableServers) {
-        log(LogType.INFO, "Fetching package list from $url ...")
+        //log(LogType.INFO, "Fetching package list from $url ...")
         
         DownloadFile("${url}/shippkg/packages.ship", "${PACKAGE_LIST_PATH}${name}.ship")
     }
@@ -281,5 +282,7 @@ fun main(args: Array<String>) {
 
 
     //DownloadFile("https://ferriit.gregtech.eu/kingjamesbible.txt", "bible.txt")
-    update(shipPKG)
+    when (args[0]) {
+        "update" -> update(shipPKG)
+    }
 }

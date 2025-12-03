@@ -1,6 +1,7 @@
 [Servers]
 # DO NOT change the names of servers already in use
-Server1 = "https://ferriit.gregtech.eu/"
+Server1 = "https://ferriit.gregtech.eu"
+Localhost = "http://localhost"
 
 # Customization for text stuff and colors
 
@@ -13,12 +14,12 @@ InputPrefix = "?: "       # The prefix shown for user input
 
 [Customize.colors]
 # Colors for the previously mentioned elements in Customize.text
-LoggingEndColor = ""
+LoggingEndColor = "blue"
 ErrorPrefixColor = "red"
 WarningPrefixColor = "yellow"
 InfoPrefixColor = "blue"
 InputPrefixColor = "white"
-SpinnerColor = "purple"
+SpinnerColor = "blue"
 TextColor = "white"
 
 # Add packages with '[Package.'package name']'. The label needs to have version and a server to fetch from. Example for GCC:
