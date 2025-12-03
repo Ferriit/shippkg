@@ -1,11 +1,12 @@
 import java.io.File
 import java.net.URL
 import java.net.HttpURLConnection
+import java.nio.file.Paths
 
 
-const val ROOT_PATH = "/etc/ship"
+const val ROOT_PATH = "/etc/ship/"
 const val SHIP_FILE = "/etc/ship/ship.pkg"
-const val debug = true
+const val PACKAGE_LIST_PATH = "/etc/ship/packages/"
 
 // Customizable things done by fetching from the ship.pkg file
 var messageEnd = ""
@@ -28,7 +29,8 @@ enum class LogType {
     WARN,
     ERR,
     INPUT,
-    DBG
+    DBG,
+    NULL
 }
 
 
@@ -53,6 +55,7 @@ fun log(type: LogType, Message: String) {
         LogType.ERR -> errorPrefix
         LogType.INPUT -> inputPrefix
         LogType.DBG -> "[DEBUG] "
+        LogType.NULL -> ""
     }
     
     val color = when (type) {
@@ -61,12 +64,13 @@ fun log(type: LogType, Message: String) {
         LogType.ERR -> colorTable[errorColor] ?: ""
         LogType.INPUT -> colorTable[inputColor] ?: ""
         LogType.DBG -> colorTable["purple"] ?: ""
+        LogType.NULL -> colorTable["reset"] ?: ""
     }
 
     val messageColor = colorTable[textColor] ?: ""
     val endColor = colorTable[suffixColor] ?: ""
 
-    println("$color$prefix:$messageColor $Message $endColor$messageEnd\u001B[0m")
+    println("$color$prefix $messageColor$Message $endColor$messageEnd\u001B[0m")
 }
 
 
@@ -133,8 +137,24 @@ fun writeTOML(data: Map<String, Map<String, String>>): String =
             }
             appendLine()  // blank line after each section
         }
-    }
+}
 
+
+fun httpPingWithLatency(urlString: String, timeout: Int = 5000): Long? {
+    return try {
+        val start = System.currentTimeMillis()
+        val url = URL(urlString)
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "HEAD"
+        connection.connectTimeout = timeout
+        connection.readTimeout = timeout
+        connection.connect()
+        val code = connection.responseCode
+        if (code in 200..399) System.currentTimeMillis() - start else null
+    } catch (e: Exception) {
+        null
+    }
+}
 
 
 fun DownloadFile(url: String, OutputPath: String) {
@@ -206,7 +226,34 @@ fun DownloadFile(url: String, OutputPath: String) {
     val color = colorTable[suffixColor] ?: ""
 
     // Print final completion message and add spaces to overwrite spinner line
-    println("\r$spinnerColor✔$currentTextColor Completed $url$color 100%          ")
+    println("\r$spinnerColor✔$currentTextColor Completed $url$color 100%              ")
+}
+
+fun update(shipPKG: MutableMap<String, MutableMap<String, String>>) {
+    log(LogType.INFO, "Fetching servers...")
+    log(LogType.INFO, "Available servers:")
+    val Servers: MutableMap<String, String> = shipPKG["Servers"] ?: mutableMapOf()
+
+    var availableServers: MutableMap<String, String> = mutableMapOf()
+
+    for ((name, url) in Servers) {
+        val latency = httpPingWithLatency(url)
+        if (latency != null) {
+            log(LogType.NULL, " - $name: $url (ping: ${latency}ms)")
+            availableServers[name] = url
+        }
+    }
+
+    val packageListDir = File(PACKAGE_LIST_PATH)
+    if (!packageListDir.exists()) {
+        packageListDir.mkdirs()
+    }
+
+    for ((name, url) in availableServers) {
+        log(LogType.INFO, "Fetching package list from $url ...")
+        
+        DownloadFile("${url}/shippkg/packages.ship", "${PACKAGE_LIST_PATH}${name}.ship")
+    }
 }
 
 
@@ -233,5 +280,6 @@ fun main(args: Array<String>) {
     textColor = customizeColor["TextColor"] ?: "white"
 
 
-    DownloadFile("https://ferriit.gregtech.eu/kingjamesbible.txt", "bible.txt")
+    //DownloadFile("https://ferriit.gregtech.eu/kingjamesbible.txt", "bible.txt")
+    update(shipPKG)
 }

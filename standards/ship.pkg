@@ -1,15 +1,15 @@
 [Servers]
 # DO NOT change the names of servers already in use
-Server1 = "https://ferriit.gregtech.eu/shippkg"
+Server1 = "https://ferriit.gregtech.eu/"
 
 # Customization for text stuff and colors
 
 [Customize.text]
 LoggingEnd = ""         # The symbols added at the end of logging messages. Padded by default
-ErrorPrefix = "E"       # The prefix shown for errors
-WarningPrefix = "W"     # The prefix shown for warnings
-InfoPrefix = "I"        # The prefix shown for regular information
-InputPrefix = "?"       # The prefix shown for user input
+ErrorPrefix = "E: "       # The prefix shown for errors
+WarningPrefix = "W: "     # The prefix shown for warnings
+InfoPrefix = "I: "        # The prefix shown for regular information
+InputPrefix = "?: "       # The prefix shown for user input
 
 [Customize.colors]
 # Colors for the previously mentioned elements in Customize.text
