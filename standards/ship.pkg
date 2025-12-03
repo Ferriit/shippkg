@@ -18,6 +18,8 @@ ErrorPrefixColor = "red"
 WarningPrefixColor = "yellow"
 InfoPrefixColor = "blue"
 InputPrefixColor = "white"
+SpinnerColor = "purple"
+TextColor = "white"
 
 # Add packages with '[Package.'package name']'. The label needs to have version and a server to fetch from. Example for GCC:
 

@@ -1,5 +1,6 @@
 import java.io.File
 import java.net.URL
+import java.net.HttpURLConnection
 
 
 const val ROOT_PATH = "/etc/ship"
@@ -18,6 +19,8 @@ var errorColor = ""
 var warningColor = ""
 var infoColor = ""
 var inputColor = ""
+var spinnerColor = ""
+var textColor = ""
 
 
 enum class LogType {
@@ -60,7 +63,10 @@ fun log(type: LogType, Message: String) {
         LogType.DBG -> colorTable["purple"] ?: ""
     }
 
-    println("$color$prefix:\u001B[0m $Message $messageEnd")
+    val messageColor = colorTable[textColor] ?: ""
+    val endColor = colorTable[suffixColor] ?: ""
+
+    println("$color$prefix:$messageColor $Message $endColor$messageEnd\u001B[0m")
 }
 
 
@@ -130,12 +136,77 @@ fun writeTOML(data: Map<String, Map<String, String>>): String =
     }
 
 
+
 fun DownloadFile(url: String, OutputPath: String) {
-    URL(url).openStream().use { input ->
-        File(OutputPath).outputStream().use { output -> 
-            input.copyTo(output)
+    // Open a connection to the URL
+    val connection = URL(url).openConnection() as HttpURLConnection
+
+    // Table of colors
+    val colorTable = mapOf(
+        "default" to "\u001B[1m",
+        "black"   to "\u001B[1;30m",
+        "red"     to "\u001B[1;31m",
+        "green"   to "\u001B[1;32m",
+        "yellow"  to "\u001B[1;33m",
+        "blue"    to "\u001B[1;34m",
+        "purple"  to "\u001B[1;35m",
+        "cyan"    to "\u001B[1;36m",
+        "white"   to "\u001B[1;37m",
+        "reset"   to "\u001B[0m"
+    )
+
+    // Get the total file size in bytes. Used to calculate percentage.
+    val totalSize = connection.contentLengthLong
+    if (totalSize <= 0) {
+        log(LogType.WARN, "Could not determine file size for download. Download won't show procent.")
+    }
+
+    // Buffer for reading chunks of the file (8 KB per read)
+    val buffer = ByteArray(8192)
+    var downloaded: Long = 0  // Counter for how many bytes we have downloaded so far
+
+    // Open the output file
+    val file = File(OutputPath)
+    file.outputStream().use { output ->
+        // Open the input stream from the URL
+        connection.inputStream.use { input ->
+            var read: Int  // Number of bytes read in each iteration
+
+            // Spinner characters for animated effect
+            val spinner = arrayOf("|", "/", "-", "\\")
+            var spinIndex = 0  // Tracks which spinner character to show
+
+            // Loop until the entire file is read
+            while (true) {
+                read = input.read(buffer)  // Read up to buffer.size bytes
+                if (read == -1) break      // End of file reached
+
+                output.write(buffer, 0, read)  // Write chunk to file
+                downloaded += read             // Update downloaded counter
+
+                // Calculate percentage downloaded (0-100)
+                val percent = if (totalSize > 0) (downloaded * 100 / totalSize) else 0
+
+                // Choose the spinner character
+                val spinChar = spinner[spinIndex % spinner.size]
+                spinIndex++
+
+                // Print spinner and percentage on the same line
+                // \r returns cursor to the beginning of the line
+                val spinnerColor = colorTable[spinnerColor]
+                val currentTextColor = colorTable[textColor]
+                val color = colorTable[suffixColor] ?: ""
+                print("\r$spinnerColor$spinChar : $currentTextColor Downloading... $url $color$percent%")
+            }
         }
     }
+
+    val spinnerColor = colorTable[spinnerColor]
+    val currentTextColor = colorTable[textColor]
+    val color = colorTable[suffixColor] ?: ""
+
+    // Print final completion message and add spaces to overwrite spinner line
+    println("\r$spinnerColor✔$currentTextColor Completed $url$color 100%          ")
 }
 
 
@@ -158,4 +229,9 @@ fun main(args: Array<String>) {
     warningColor = customizeColor["WarningPrefixColor"] ?: "yellow"
     infoColor = customizeColor["InfoPrefixColor"] ?: "blue"
     inputColor = customizeColor["InputPrefixColor"] ?: "white"
+    spinnerColor = customizeColor["SpinnerColor"] ?: "purple"
+    textColor = customizeColor["TextColor"] ?: "white"
+
+
+    DownloadFile("https://ferriit.gregtech.eu/kingjamesbible.txt", "bible.txt")
 }
