@@ -230,6 +230,52 @@ fun DownloadFile(url: String, OutputPath: String) {
     println("\r$spinnerColor✔$currentTextColor Completed $url$color 100%              ")
 }
 
+
+fun add(pkg: String, shipPKGFile: File, shipPKG: MutableMap<String, MutableMap<String, String>>) {
+    log(LogType.INFO, "Looking for package availability...")
+
+    val Servers = shipPKG["Servers"] ?: mutableMapOf()
+
+    var availableServers: MutableMap<String, String> = mutableMapOf()
+
+    /*for ((name, url) in Servers) {
+        val latency = httpPingWithLatency(url)
+        if (latency != null) {
+            log(LogType.NULL, " - $name: $url (ping: ${latency}ms)")
+            availableServers[name] = url
+        }
+    }*/
+    availableServers = Servers
+
+    var Match: String = ""
+    var Version: String = ""
+
+    for (name in availableServers.keys) {
+        val packageListFile = File("${PACKAGE_LIST_PATH}${name}.ship")
+        val packages = parseTOML(packageListFile.readText())
+
+        // Find all keys starting with pkg + "."
+        val matchingKeys = packages.keys.filter { it.startsWith("$pkg.") }
+
+        if (matchingKeys.isNotEmpty()) {
+            // Pick the one with the highest number after the dot
+            val highestKey = matchingKeys.maxByOrNull { it.substringAfter(".").toIntOrNull() ?: 0 }!!
+            Match = name
+            Version = packages[highestKey]?.get("Version") ?: ""
+            break
+        }
+
+        //packageListFile.appendText("\n" + writeTOML(MapOf("Package.$package" to MapOf("Version" to ""))))
+    }
+
+    if (Match == "") {
+        log(LogType.ERR, "Package '$pkg' not found on any available server.")
+        return
+    }
+    shipPKGFile.appendText("\n" + writeTOML(mapOf("Package.$pkg" to mapOf("Version" to Version, "Server" to Match))))
+}
+
+
 fun update(shipPKG: MutableMap<String, MutableMap<String, String>>) {
     log(LogType.INFO, "Fetching servers...")
     log(LogType.INFO, "Available servers:")
@@ -277,12 +323,24 @@ fun main(args: Array<String>) {
     warningColor = customizeColor["WarningPrefixColor"] ?: "yellow"
     infoColor = customizeColor["InfoPrefixColor"] ?: "blue"
     inputColor = customizeColor["InputPrefixColor"] ?: "white"
-    spinnerColor = customizeColor["SpinnerColor"] ?: "purple"
+    spinnerColor = customizeColor["SpinnerColor"] ?: "blue"
     textColor = customizeColor["TextColor"] ?: "white"
 
 
     //DownloadFile("https://ferriit.gregtech.eu/kingjamesbible.txt", "bible.txt")
+    if (args.isEmpty()) {
+        log(LogType.ERR, "No command provided. Exiting.")
+        return
+    }
     when (args[0]) {
         "update" -> update(shipPKG)
+        "add" -> {
+            if (args.size < 2) {
+                log(LogType.ERR, "No package name provided for 'add' command.")
+                return
+            }
+            add(args[1], shipPKGFile, shipPKG)
+        }
+        else -> log(LogType.ERR, "Unknown command '${args[0]}'. Exiting.")
     }
 }
