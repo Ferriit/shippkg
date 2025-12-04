@@ -505,7 +505,7 @@ fun install(name: String, values: MutableMap<String, String>, shipPKG: MutableMa
 }
 
 
-fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>) {
+fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>, args: Array<String> = emptyArray()) {
     val downloadDir = File(DOWNLOAD_PATH)
     val diffDir = File("${ROOT_PATH}diffs.ship")
 
@@ -519,6 +519,7 @@ fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>) {
         diffDir.createNewFile()
     }
 
+    val force = "--force" in args || "-f" in args
 
     log(LogType.INFO, "Checking diffs...")
 
@@ -541,7 +542,13 @@ fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>) {
         }
     }
 
-    if (installDiff.isEmpty() && uninstallDiff.isEmpty()) {
+    // If --force, treat all packages as needing a reinstall
+    if (force) {
+        log(LogType.INFO, "--force detected: forcing reinstallation of all packages.")
+        installDiff.putAll(shipPKG.filterKeys { it.startsWith("Package.") })
+    }
+
+    if (installDiff.isEmpty() && uninstallDiff.isEmpty() && ("--diff-silent" !in args)) {
         log(LogType.NOTICE, "No changes detected. System is in sync. Exiting...")
         return
     }
@@ -551,12 +558,16 @@ fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>) {
         install(name, values, shipPKG)
     }
 
-
     // Update diff file
     diffDir.writeText(writeTOML(shipPKG))
 
     // Install dependencies
-    sync(shipPKG)
+    if ("--diff-silent" !in args) {
+        log(LogType.INFO, "Installing dependencies added during sync...")
+        sync(shipPKG, args.filter { it != "--force" && it != "-f" }.plus("--diff-silent").toTypedArray())
+        log(LogType.NOTICE, "Installs completed.")
+        log(LogType.NOTICE, "Sync complete.")
+    }
     return
 }
 
@@ -600,7 +611,7 @@ fun main(args: Array<String>) {
             }
             add(args[1], shipPKGFile, shipPKG)
         }
-        "sync" -> sync(shipPKG)
+        "sync" -> sync(shipPKG, args)
         else -> log(LogType.ERR, "Unknown command '${args[0]}'. Exiting.")
     }
 }
