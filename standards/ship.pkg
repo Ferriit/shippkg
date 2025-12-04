@@ -6,11 +6,12 @@ Localhost = "http://localhost"
 # Customization for text stuff and colors
 
 [Customize.text]
-LoggingEnd = ""         # The symbols added at the end of logging messages. Padded by default
-ErrorPrefix = "E: "       # The prefix shown for errors
-WarningPrefix = "W: "     # The prefix shown for warnings
-InfoPrefix = "I: "        # The prefix shown for regular information
-InputPrefix = "?: "       # The prefix shown for user input
+LoggingEnd = ""          # The symbols added at the end of logging messages. Padded by default
+ErrorPrefix = "E:"       # The prefix shown for errors
+WarningPrefix = "W:"     # The prefix shown for warnings
+InfoPrefix = "I:"        # The prefix shown for regular information
+InputPrefix = "?:"       # The prefix shown for user input
+NoticePrefix = "N:"      # The prefix shown for notices
 
 [Customize.colors]
 # Colors for the previously mentioned elements in Customize.text
@@ -19,6 +20,7 @@ ErrorPrefixColor = "red"
 WarningPrefixColor = "yellow"
 InfoPrefixColor = "blue"
 InputPrefixColor = "white"
+NoticePrefixColor = "green"
 SpinnerColor = "blue"
 TextColor = "white"
 

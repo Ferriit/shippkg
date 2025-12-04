@@ -15,6 +15,7 @@ var errorPrefix = ""
 var warningPrefix = ""
 var infoPrefix = ""
 var inputPrefix = ""
+var noticePrefix = ""
 
 var suffixColor = ""
 var errorColor = ""
@@ -23,6 +24,10 @@ var infoColor = ""
 var inputColor = ""
 var spinnerColor = ""
 var textColor = ""
+var noticeColor = ""
+
+
+/* IMPLEMENTING: SYNCING */
 
 
 enum class LogType {
@@ -31,7 +36,8 @@ enum class LogType {
     ERR,
     INPUT,
     DBG,
-    NULL
+    NULL,
+    NOTICE
 }
 
 
@@ -57,6 +63,7 @@ fun log(type: LogType, Message: String) {
         LogType.INPUT -> inputPrefix
         LogType.DBG -> "[DEBUG] "
         LogType.NULL -> ""
+        LogType.NOTICE -> noticePrefix
     }
     
     val color = when (type) {
@@ -66,6 +73,7 @@ fun log(type: LogType, Message: String) {
         LogType.INPUT -> colorTable[inputColor] ?: ""
         LogType.DBG -> colorTable["purple"] ?: ""
         LogType.NULL -> colorTable["reset"] ?: ""
+        LogType.NOTICE -> colorTable[noticeColor] ?: ""
     }
 
     val messageColor = colorTable[textColor] ?: ""
@@ -272,6 +280,12 @@ fun add(pkg: String, shipPKGFile: File, shipPKG: MutableMap<String, MutableMap<S
         log(LogType.ERR, "Package '$pkg' not found on any available server.")
         return
     }
+
+    if (shipPKG["Package.$pkg"] != null) {
+        log(LogType.WARN, "Package '$pkg' is already added. Manually remove \"Package.$pkg\" from ship.pkg and re-run.")
+        return
+    }
+
     log(LogType.INFO, "Adding package '$pkg' version '$Version' from server '$Match'...")
     shipPKGFile.appendText("\n" + writeTOML(mapOf("Package.$pkg" to mapOf("Version" to Version, "Server" to Match))))
 }
@@ -305,6 +319,87 @@ fun update(shipPKG: MutableMap<String, MutableMap<String, String>>) {
 }
 
 
+fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>) {
+    val downloadDir = File(DOWNLOAD_PATH)
+    val diffDir = File("${ROOT_PATH}diffs.ship")
+
+    if (!downloadDir.exists()) {
+        log(LogType.WARN, "Downloads path is not set. Creating...")
+        downloadDir.mkdirs()
+    }
+
+    if (!diffDir.exists()) {
+        log(LogType.WARN, "Diff path is not set. Creating...")
+        diffDir.createNewFile()
+    }
+
+
+    log(LogType.INFO, "Checking diffs...")
+
+    val diffData = parseTOML(diffDir.readText())
+
+    var installDiff = mutableMapOf<String, MutableMap<String, String>>()
+    var uninstallDiff = mutableMapOf<String, MutableMap<String, String>>()
+
+    for ((name, values) in shipPKG) {
+        if (name !in diffData && name.startsWith("Package.")) {
+            installDiff[name] = values
+            log(LogType.NOTICE, "Package '$name' marked for installation.")
+        }
+    }
+
+    for ((name, values) in diffData) {
+        if (name !in shipPKG && name.startsWith("Package.")) {
+            uninstallDiff[name] = values
+            log(LogType.NOTICE, "Package '$name' marked for uninstallation.")
+        }
+    }
+
+    if (installDiff.isEmpty() && uninstallDiff.isEmpty()) {
+        log(LogType.NOTICE, "No changes detected. System is in sync. Exiting...")
+        return
+    }
+
+    // Process installations
+    for ((name, values) in installDiff) {
+        val pkgName = name.removePrefix("Package.")
+        val version = values["Version"] ?: ""
+        val server = values["Server"] ?: ""
+
+        val packageListFile = File("${PACKAGE_LIST_PATH}${server}.ship")
+        val packageList = parseTOML(packageListFile.readText())
+
+        val Servers = shipPKG["Servers"] ?: mutableMapOf()
+        val serverURL = Servers[server] ?: ""
+        val packageURL = packageList.keys
+            .filter { it.startsWith("$pkgName.") }
+            .maxByOrNull { it.substringAfter(".").toIntOrNull() ?: 0 }
+            ?.let { packageList[it]?.get("URL") } ?: ""
+        
+        log(LogType.DBG, "Package URL: ${packageURL}")
+
+        if (serverURL == "") {
+            log(LogType.ERR, "Server '$server' for package '$pkgName' not found. Skipping...")
+            continue
+        }
+
+        if (packageURL == "") {
+            log(LogType.ERR, "URL for package '$pkgName' not found. Skipping...")
+            continue
+        }
+
+        log(LogType.INFO, "Downloading package '$pkgName' version '$version' from server '$server'...")
+        DownloadFile(packageURL, "${DOWNLOAD_PATH}$pkgName-$version.tar.gz")
+        log(LogType.INFO, "Package '$pkgName' downloaded to '${DOWNLOAD_PATH}$pkgName-$version.tar.gz'.")
+    }
+
+
+    // Update diff file
+    diffDir.writeText(writeTOML(shipPKG))
+    return
+}
+
+
 fun main(args: Array<String>) {
     var shipPKGFile = File(SHIP_FILE)
 
@@ -313,10 +408,11 @@ fun main(args: Array<String>) {
     // Get customization data from ship.pkg
     val customizeText = shipPKG["Customize.text"] ?: mutableMapOf()
     messageEnd = customizeText["LoggingEnd"] ?: ""
-    errorPrefix = customizeText["ErrorPrefix"] ?: "E"
-    warningPrefix = customizeText["WarningPrefix"] ?: "W"
-    infoPrefix = customizeText["InfoPrefix"] ?: "I"
-    inputPrefix = customizeText["InputPrefix"] ?: "?"
+    errorPrefix = customizeText["ErrorPrefix"] ?: "E:"
+    warningPrefix = customizeText["WarningPrefix"] ?: "W:"
+    infoPrefix = customizeText["InfoPrefix"] ?: "I:"
+    inputPrefix = customizeText["InputPrefix"] ?: "?:"
+    noticePrefix = customizeText["NoticePrefix"] ?: "N:"
 
     val customizeColor = shipPKG["Customize.colors"] ?: mutableMapOf()
     suffixColor = customizeColor["LoggingEndColor"] ?: ""
@@ -325,6 +421,7 @@ fun main(args: Array<String>) {
     infoColor = customizeColor["InfoPrefixColor"] ?: "blue"
     inputColor = customizeColor["InputPrefixColor"] ?: "white"
     spinnerColor = customizeColor["SpinnerColor"] ?: "blue"
+    noticeColor= customizeColor["NoticePrefixColor"] ?: "green"
     textColor = customizeColor["TextColor"] ?: "white"
 
 
@@ -342,6 +439,7 @@ fun main(args: Array<String>) {
             }
             add(args[1], shipPKGFile, shipPKG)
         }
+        "sync" -> sync(shipPKG)
         else -> log(LogType.ERR, "Unknown command '${args[0]}'. Exiting.")
     }
 }
