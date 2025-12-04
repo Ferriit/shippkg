@@ -2,12 +2,17 @@ import java.io.File
 import java.net.URL
 import java.net.HttpURLConnection
 import java.nio.file.Paths
+import java.io.*
+import java.util.zip.ZipInputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 
 const val ROOT_PATH = "/etc/ship/"
 const val SHIP_FILE = "/etc/ship/ship.pkg"
 const val PACKAGE_LIST_PATH = "/etc/ship/packagelists/"
 const val DOWNLOAD_PATH = "/etc/ship/downloads/"
+const val INSTALL_PATH = "/etc/ship/installed/"
 
 // Customizable things done by fetching from the ship.pkg file
 var messageEnd = ""
@@ -106,6 +111,28 @@ fun stripComments(source: String): String {
 }
 
 
+fun extractZip(zipFilePath: String, outputDir: String) {
+    File(outputDir).mkdirs()
+
+    ZipInputStream(FileInputStream(zipFilePath)).use { zip ->
+        var entry = zip.nextEntry
+        while (entry != null) {
+            val outFile = File(outputDir, entry.name)
+            if (entry.isDirectory) {
+                outFile.mkdirs()
+            } else {
+                outFile.parentFile.mkdirs()
+                FileOutputStream(outFile).use { out ->
+                    zip.copyTo(out)
+                }
+            }
+            zip.closeEntry()
+            entry = zip.nextEntry
+        }
+    }
+}
+
+
 fun parseTOML(data: String): MutableMap<String, MutableMap<String, String>> {
     val toml: MutableMap<String, MutableMap<String, String>> = mutableMapOf()
     val noComments = stripComments(data).replace("\"", "").replace("'", "")
@@ -146,6 +173,82 @@ fun writeTOML(data: Map<String, Map<String, String>>): String =
             }
             appendLine()  // blank line after each section
         }
+}
+
+
+fun runShellScript(scriptPath: String): Int {
+    try {
+        // Make sure the script is executable
+        val process = ProcessBuilder("/bin/bash", scriptPath)
+            .inheritIO()  // Optional: sends the script's output/error to your program's stdout/stderr
+            .start()
+
+        val exitCode = process.waitFor()  // Wait for script to finish
+        if (exitCode == 0) {
+            return exitCode
+        } else {
+            return exitCode
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        return -1
+    }
+}
+
+
+fun makeExecutable(filePath: String) {
+    val file = File(filePath)
+    if (!file.exists()) {
+        println("File does not exist: $filePath")
+        return
+    }
+
+    // Make executable by owner
+    val success = file.setExecutable(true, true)  
+    if (success) {
+        println("$filePath is now executable")
+    } else {
+        println("Failed to make $filePath executable")
+    }
+}
+
+
+fun moveFile(sourcePath: String, targetPath: String) {
+    val source = Paths.get(sourcePath)
+    val target = Paths.get(targetPath)
+    try {
+        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
+        println("Moved $sourcePath to $targetPath")
+    } catch (e: Exception) {
+        println("Failed to move file: ${e.message}")
+    }
+}
+
+
+fun createShortcut(targetPath: String, shortcutPath: String) {
+    val target = Paths.get(targetPath)       // The file or folder you want to point to
+    val shortcut = Paths.get(shortcutPath)   // The path where the shortcut should be created
+
+    try {
+        // Create symlink, replace if it exists
+        Files.createSymbolicLink(shortcut, target)
+        println("Shortcut created: $shortcutPath → $targetPath")
+    } catch (e: Exception) {
+        println("Failed to create shortcut: ${e.message}")
+    }
+}
+
+
+fun copyFile(sourcePath: String, destinationPath: String) {
+    val source = Paths.get(sourcePath)
+    val destination = Paths.get(destinationPath)
+
+    try {
+        Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING)
+        println("File copied: $sourcePath → $destinationPath")
+    } catch (e: Exception) {
+        println("Failed to copy file: ${e.message}")
+    }
 }
 
 
@@ -319,6 +422,89 @@ fun update(shipPKG: MutableMap<String, MutableMap<String, String>>) {
 }
 
 
+fun install(name: String, values: MutableMap<String, String>, shipPKG: MutableMap<String, MutableMap<String, String>>): Int {
+    val pkgName = name.removePrefix("Package.")
+    val version = values["Version"] ?: ""
+    val server = values["Server"] ?: ""
+
+    val packageListFile = File("${PACKAGE_LIST_PATH}${server}.ship")
+    val packageList = parseTOML(packageListFile.readText())
+
+    val Servers = shipPKG["Servers"] ?: mutableMapOf()
+    val serverURL = Servers[server] ?: ""
+    val packageURL = packageList.keys
+        .filter { it.startsWith("$pkgName.") }
+        .maxByOrNull { it.substringAfter(".").toIntOrNull() ?: 0 }
+        ?.let { packageList[it]?.get("URL") } ?: ""
+    
+    //log(LogType.DBG, "Package URL: ${packageURL}")
+
+    if (serverURL == "") {
+        log(LogType.ERR, "Server '$server' for package '$pkgName' not found. Skipping...")
+        return 0
+    }
+
+    if (packageURL == "") {
+        log(LogType.ERR, "URL for package '$pkgName' not found. Skipping...")
+        return 0
+    }
+
+    log(LogType.INFO, "Downloading package '$pkgName' version '$version' from server '$server'...")
+    DownloadFile(packageURL, "${DOWNLOAD_PATH}$pkgName-$version.zip")
+    log(LogType.INFO, "Package '$pkgName' downloaded to '${DOWNLOAD_PATH}$pkgName-$version.zip'.")
+
+    log(LogType.INFO, "Extracting package '$pkgName'...")
+    extractZip("${DOWNLOAD_PATH}$pkgName-$version.zip", "${DOWNLOAD_PATH}$pkgName-$version/")
+
+    log(LogType.INFO, "Package '$pkgName' extracted to '${DOWNLOAD_PATH}$pkgName-$version/'.")
+    log(LogType.INFO, "Reading build information and installing package '$pkgName'...")
+
+    val buildInfo = parseTOML(File("${DOWNLOAD_PATH}$pkgName-$version/$pkgName/packageinfo.ship").readText())
+
+    log(LogType.NOTICE, "Adding dependencies to install queue...")
+
+    for ((dependency, values) in buildInfo["Dependencies"] ?: mutableMapOf()) {
+        if (dependency != "shippkg") {
+            log(LogType.NULL, " - $dependency")
+            add(dependency, File(SHIP_FILE), shipPKG)
+        }
+    }
+
+    log(LogType.INFO, "Running install script for package '$pkgName'...")
+    makeExecutable("${DOWNLOAD_PATH}$pkgName-$version/$pkgName/${buildInfo["meta"]?.get("BuildScript") ?: "install.sh"}")
+    val exitCode = runShellScript("${DOWNLOAD_PATH}$pkgName-$version/$pkgName/${buildInfo["meta"]?.get("BuildScript") ?: "install.sh"}")
+    if (exitCode != 0) {
+        log(LogType.ERR, "Installation script for package '$pkgName' failed with exit code $exitCode. Aborting installation.")
+        return 1
+    }
+
+    log(LogType.INFO, "Moving installed files for package '$pkgName' to install path...")
+    val forceMove = buildInfo["meta"]?.get("ForceDir") ?: "no"
+
+    val targetDir = File("${INSTALL_PATH}$pkgName")
+    if (!targetDir.exists()) targetDir.mkdirs()
+    copyFile("${DOWNLOAD_PATH}$pkgName-$version/$pkgName/packageinfo.ship", "${INSTALL_PATH}$pkgName/packageinfo.ship")
+
+    if (forceMove.lowercase() == "yes") {
+        //val mainFile = buildInfo["meta"]?.get("MainFile") ?: buildInfo["meta"]?.get("BuildScript") ?: ""
+        val downloadPath = "${DOWNLOAD_PATH}$pkgName-$version/$pkgName/${buildInfo["meta"]?.get("MainFile")}"
+        if (!File(downloadPath).exists()) File(downloadPath).mkdirs() else File(downloadPath).parentFile.mkdirs() 
+
+        moveFile(downloadPath, buildInfo["meta"]?.get("InstallDir") ?: "/usr/local/bin/$pkgName")
+    } else {
+        moveFile("${DOWNLOAD_PATH}$pkgName-$version/$pkgName/", "${INSTALL_PATH}")
+        val mainFile = buildInfo["meta"]?.get("MainFile") ?: buildInfo["meta"]?.get("BuildScript") ?: ""
+        if (mainFile.isNotEmpty()) {
+            if (!File("/usr/local/bin/$pkgName").exists()) File("/usr/local/bin/$pkgName").createNewFile()
+            createShortcut("/usr/local/bin/$pkgName", "${INSTALL_PATH}$pkgName/$mainFile")
+        } else {
+            log(LogType.WARN, "No main file specified for package '$pkgName'. Skipping shortcut creation.")
+        }
+    }
+    return 0
+}
+
+
 fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>) {
     val downloadDir = File(DOWNLOAD_PATH)
     val diffDir = File("${ROOT_PATH}diffs.ship")
@@ -362,40 +548,15 @@ fun sync(shipPKG: MutableMap<String, MutableMap<String, String>>) {
 
     // Process installations
     for ((name, values) in installDiff) {
-        val pkgName = name.removePrefix("Package.")
-        val version = values["Version"] ?: ""
-        val server = values["Server"] ?: ""
-
-        val packageListFile = File("${PACKAGE_LIST_PATH}${server}.ship")
-        val packageList = parseTOML(packageListFile.readText())
-
-        val Servers = shipPKG["Servers"] ?: mutableMapOf()
-        val serverURL = Servers[server] ?: ""
-        val packageURL = packageList.keys
-            .filter { it.startsWith("$pkgName.") }
-            .maxByOrNull { it.substringAfter(".").toIntOrNull() ?: 0 }
-            ?.let { packageList[it]?.get("URL") } ?: ""
-        
-        log(LogType.DBG, "Package URL: ${packageURL}")
-
-        if (serverURL == "") {
-            log(LogType.ERR, "Server '$server' for package '$pkgName' not found. Skipping...")
-            continue
-        }
-
-        if (packageURL == "") {
-            log(LogType.ERR, "URL for package '$pkgName' not found. Skipping...")
-            continue
-        }
-
-        log(LogType.INFO, "Downloading package '$pkgName' version '$version' from server '$server'...")
-        DownloadFile(packageURL, "${DOWNLOAD_PATH}$pkgName-$version.tar.gz")
-        log(LogType.INFO, "Package '$pkgName' downloaded to '${DOWNLOAD_PATH}$pkgName-$version.tar.gz'.")
+        install(name, values, shipPKG)
     }
 
 
     // Update diff file
     diffDir.writeText(writeTOML(shipPKG))
+
+    // Install dependencies
+    sync(shipPKG)
     return
 }
 
